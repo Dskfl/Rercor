@@ -8,13 +8,13 @@ from reportlab.lib.pagesizes import letter
 from rembg import remove
 
 # ============================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN (8.7 cm DE ANCHO Y MÁXIMA CALIDAD)
 # ============================================================
-CARD_WIDTH_MM = 85.60
-CARD_HEIGHT_MM = 54.00
+CARD_WIDTH_MM = 87.00                               # 8.7 cm solicitados
+CARD_HEIGHT_MM = 87.00 * (54.00 / 85.60)            # Proporción exacta mantenida (~54.88 mm)
 MARGIN_MM = 10
 SEPARATION_MM = 8
-OUTPUT_WIDTH = 1200
+OUTPUT_WIDTH = 2400                                 # Duplicado para máxima nitidez en impresión
 
 def mm_to_points(mm):
     return mm * 72 / 25.4
@@ -37,16 +37,16 @@ def ordenar_puntos(puntos):
     ], dtype=np.float32)
 
 # ============================================================
-# DETECTAR CON INTELIGENCIA ARTIFICIAL (V3)
+# DETECTAR CON INTELIGENCIA ARTIFICIAL (ALTA PRECISIÓN V3)
 # ============================================================
 def detectar_con_ia(imagen):
     alto, ancho = imagen.shape[:2]
-    max_dim = 800
+    max_dim = 1200  # Mayor resolución para que la IA detecte bordes con extrema precisión
     escala = 1
     
     if max(alto, ancho) > max_dim:
         escala = max_dim / max(alto, ancho)
-        img_procesar = cv2.resize(imagen, (int(ancho * escala), int(alto * escala)))
+        img_procesar = cv2.resize(imagen, (int(ancho * escala), int(alto * escala)), interpolation=cv2.INTER_AREA)
     else:
         img_procesar = imagen.copy()
 
@@ -66,16 +66,16 @@ def detectar_con_ia(imagen):
     return ordenar_puntos(esquinas)
 
 # ============================================================
-# RECORTE MANUAL (ASISTENTE)
+# RECORTE MANUAL (ASISTENTE DE EMERGENCIA)
 # ============================================================
 def seleccion_manual(imagen, titulo="Selecciona y presiona ENTER"):
     alto, ancho = imagen.shape[:2]
-    max_dim = 800
+    max_dim = 1200
     escala = 1
 
     if max(alto, ancho) > max_dim:
         escala = max_dim / max(alto, ancho)
-        img_mostrar = cv2.resize(imagen, (int(ancho * escala), int(alto * escala)))
+        img_mostrar = cv2.resize(imagen, (int(ancho * escala), int(alto * escala)), interpolation=cv2.INTER_AREA)
     else:
         img_mostrar = imagen.copy()
 
@@ -95,7 +95,7 @@ def seleccion_manual(imagen, titulo="Selecciona y presiona ENTER"):
         ], dtype=np.float32)
 
 # ============================================================
-# CORREGIR PERSPECTIVA Y RECORTAR
+# CORREGIR PERSPECTIVA CON MÁXIMA CALIDAD (LANCZOS4)
 # ============================================================
 def recortar_cedula(imagen, esquinas):
     ancho_salida = OUTPUT_WIDTH
@@ -107,12 +107,13 @@ def recortar_cedula(imagen, esquinas):
     ], dtype=np.float32)
 
     matriz = cv2.getPerspectiveTransform(esquinas, destino)
-    return cv2.warpPerspective(imagen, matriz, (ancho_salida, alto_salida))
+    # Usamos INTER_LANCZOS4 para evitar cualquier pixelado o pérdida de nitidez en el texto
+    return cv2.warpPerspective(imagen, matriz, (ancho_salida, alto_salida), flags=cv2.INTER_LANCZOS4)
 
 # ============================================================
 # PROCESAR UNA FOTO
 # ============================================================
-def procesar_foto(ruta, salida, tipo_cara):
+def procesar_foto(ruta, salida, tipo_cara, a_color=True):
     imagen = cv2.imread(str(ruta))
     if imagen is None:
         raise Exception(f"No se pudo abrir:\n{ruta}")
@@ -130,12 +131,17 @@ def procesar_foto(ruta, salida, tipo_cara):
     
     resultado = recortar_cedula(imagen, esquinas)
     
-    if not cv2.imwrite(str(salida), resultado):
+    # Convertir a escala de grises si el usuario eligió Blanco y Negro
+    if not a_color:
+        gris = cv2.cvtColor(resultado, cv2.COLOR_BGR2GRAY)
+        resultado = cv2.cvtColor(gris, cv2.COLOR_GRAY2BGR)
+    
+    if not cv2.imwrite(str(salida), resultado, [cv2.IMWRITE_PNG_COMPRESSION, 1]):
         raise Exception(f"No se pudo guardar:\n{salida}")
     return salida
 
 # ============================================================
-# CREAR PDF
+# CREAR PDF (ESCALA REAL 1:1)
 # ============================================================
 def crear_pdf(frente, reverso, archivo_pdf):
     ancho_pagina, alto_pagina = letter
@@ -167,6 +173,11 @@ def seleccionar_archivo(titulo):
     )
 
 def ejecutar():
+    imprimir_a_color = messagebox.askyesno(
+        "Modo de Impresión",
+        "¿Deseas procesar el documento a COLOR?\n\n• SÍ = A color\n• NO = Blanco y Negro (Estilo fotocopia)"
+    )
+
     frente = seleccionar_archivo("Selecciona la FOTO DEL FRENTE")
     if not frente: return
     
@@ -182,19 +193,17 @@ def ejecutar():
         reverso_salida = carpeta / "reverso_recortado.png"
         pdf_salida = carpeta / "cedula_lista_para_imprimir.pdf"
 
-        procesar_foto(frente, frente_salida, "FRENTE")
-        procesar_foto(reverso, reverso_salida, "REVERSO")
+        procesar_foto(frente, frente_salida, "FRENTE", a_color=imprimir_a_color)
+        procesar_foto(reverso, reverso_salida, "REVERSO", a_color=imprimir_a_color)
         
         crear_pdf(frente_salida, reverso_salida, pdf_salida)
 
-        # NUEVO: Preguntar si desea mandar a imprimir directamente
         imprimir_directo = messagebox.askyesno(
             "Impresión Directa", 
-            "¡PDF creado con éxito!\n\n¿Deseas enviarlo directamente a la impresora predeterminada?"
+            "¡PDF creado a 8.7 cm y máxima calidad con éxito!\n\n¿Deseas enviarlo directamente a la impresora?"
         )
 
         if imprimir_directo:
-            # Envía el archivo a imprimir usando el sistema de Windows
             os.startfile(str(pdf_salida), "print")
             messagebox.showinfo("Impresión", "Documento enviado a la impresora correctamente.")
         else:
