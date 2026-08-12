@@ -1,10 +1,11 @@
 import cv2
 import numpy as np
+import os
 from pathlib import Path
 from tkinter import Tk, filedialog, messagebox
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-from rembg import remove  # <--- NUESTRA NUEVA INTELIGENCIA ARTIFICIAL
+from rembg import remove
 
 # ============================================================
 # CONFIGURACIÓN
@@ -40,7 +41,7 @@ def ordenar_puntos(puntos):
 # ============================================================
 def detectar_con_ia(imagen):
     alto, ancho = imagen.shape[:2]
-    max_dim = 800 # Reducimos para que la IA procese rápido
+    max_dim = 800
     escala = 1
     
     if max(alto, ancho) > max_dim:
@@ -49,33 +50,23 @@ def detectar_con_ia(imagen):
     else:
         img_procesar = imagen.copy()
 
-    # Convertir formato de color para la IA
     img_rgb = cv2.cvtColor(img_procesar, cv2.COLOR_BGR2RGB)
-    
-    # ¡LA MAGIA OCURRE AQUÍ! La IA borra el fondo
     img_sin_fondo = remove(img_rgb)
-    
-    # Extraer solo la "silueta" que recortó la IA (Canal Alpha)
     mascara = img_sin_fondo[:, :, 3] 
     
-    # Buscar el contorno de esa silueta limpia
     contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
     if not contornos:
         return None
         
-    # Encontrar la caja que encierra la cédula
     contorno_max = max(contornos, key=cv2.contourArea)
     rectangulo = cv2.minAreaRect(contorno_max)
     puntos = cv2.boxPoints(rectangulo)
     
-    # Regresar los puntos a la escala de la foto original gigante
     esquinas = puntos / escala
-    
     return ordenar_puntos(esquinas)
 
 # ============================================================
-# RECORTE MANUAL (EL ASISTENTE POR SI LA IA FALLA)
+# RECORTE MANUAL (ASISTENTE)
 # ============================================================
 def seleccion_manual(imagen, titulo="Selecciona y presiona ENTER"):
     alto, ancho = imagen.shape[:2]
@@ -92,7 +83,6 @@ def seleccion_manual(imagen, titulo="Selecciona y presiona ENTER"):
     cv2.destroyWindow(titulo)
 
     x, y, w, h = roi
-    
     if w > 0 and h > 0:
         x, y = int(x / escala), int(y / escala)
         w, h = int(w / escala), int(h / escala)
@@ -128,11 +118,8 @@ def procesar_foto(ruta, salida, tipo_cara):
         raise Exception(f"No se pudo abrir:\n{ruta}")
     
     print(f"Analizando {tipo_cara} con IA...")
-    
-    # Intento 1: Inteligencia Artificial
     esquinas = detectar_con_ia(imagen)
     
-    # Intento 2: Modo manual si la IA se confunde
     if esquinas is None:
         messagebox.showwarning(
             "Modo Manual",
@@ -164,7 +151,6 @@ def crear_pdf(frente, reverso, archivo_pdf):
     pdf.drawImage(str(frente), x, y_frente, width=ancho_tarjeta, height=alto_tarjeta, preserveAspectRatio=False)
     
     y_reverso = (y_frente - separacion - alto_tarjeta)
-    
     pdf.drawImage(str(reverso), x, y_reverso, width=ancho_tarjeta, height=alto_tarjeta, preserveAspectRatio=False)
     
     pdf.setFont("Helvetica", 7)
@@ -201,7 +187,19 @@ def ejecutar():
         
         crear_pdf(frente_salida, reverso_salida, pdf_salida)
 
-        messagebox.showinfo("Terminado", f"¡Listo!\n\nSe creó:\n{pdf_salida}")
+        # NUEVO: Preguntar si desea mandar a imprimir directamente
+        imprimir_directo = messagebox.askyesno(
+            "Impresión Directa", 
+            "¡PDF creado con éxito!\n\n¿Deseas enviarlo directamente a la impresora predeterminada?"
+        )
+
+        if imprimir_directo:
+            # Envía el archivo a imprimir usando el sistema de Windows
+            os.startfile(str(pdf_salida), "print")
+            messagebox.showinfo("Impresión", "Documento enviado a la impresora correctamente.")
+        else:
+            messagebox.showinfo("Terminado", f"PDF guardado en:\n{pdf_salida}")
+
     except Exception as error:
         messagebox.showerror("Error", str(error))
 
