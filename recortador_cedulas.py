@@ -71,9 +71,9 @@ def procesar_foto(ruta, salida, tipo_cara, a_color=True):
     cv2.imwrite(str(salida), resultado, [cv2.IMWRITE_PNG_COMPRESSION, 1])
 
 # ============================================================
-# CREAR PDF
+# CREAR PDF MULTIPÁGINA PARA LOTES
 # ============================================================
-def crear_pdf(frente, reverso, archivo_pdf, usar_tamanio_grande):
+def crear_pdf_lote(pares_imagenes, archivo_pdf, usar_tamanio_grande):
     ancho_pagina, alto_pagina = letter 
     margin = 36 
     
@@ -89,12 +89,19 @@ def crear_pdf(frente, reverso, archivo_pdf, usar_tamanio_grande):
     y_frente = alto_pagina - margin - img_height
     y_reverso = y_frente - 30 - img_height
     
-    pdf.drawImage(str(frente), x_pos, y_frente, width=img_width, height=img_height)
-    pdf.drawImage(str(reverso), x_pos, y_reverso, width=img_width, height=img_height)
+    total = len(pares_imagenes)
+    for i, (frente, reverso) in enumerate(pares_imagenes):
+        pdf.drawImage(str(frente), x_pos, y_frente, width=img_width, height=img_height)
+        pdf.drawImage(str(reverso), x_pos, y_reverso, width=img_width, height=img_height)
+        
+        # Si hay más cédulas, crear una página nueva en el PDF
+        if i < total - 1:
+            pdf.showPage()
+            
     pdf.save()
 
 # ============================================================
-# FLUJO PRINCIPAL
+# FLUJO PRINCIPAL POR LOTES
 # ============================================================
 def ejecutar():
     ventana = Tk()
@@ -103,35 +110,47 @@ def ejecutar():
     color = messagebox.askyesno("Color", "¿Imprimir a COLOR?")
     es_grande = messagebox.askyesno("Tamaño", "¿Deseas imprimir en TAMAÑO GRANDE (ancho de hoja) o ORIGINAL (8.7 cm)?")
     
-    # Pedir archivos uno por uno para asegurar el orden
-    frente = filedialog.askopenfilename(title="1. SELECCIONA LA PARTE DE ADELANTE (FRENTE)")
-    if not frente: return
+    # 1. Seleccionar todos los frentes a la vez
+    frentes = filedialog.askopenfilenames(title="1. Selecciona TODOS los FRENTES (Usa Ctrl para elegir varios)")
+    if not frentes: return
     
-    reverso = filedialog.askopenfilename(title="2. SELECCIONA LA PARTE DE ATRÁS (REVERSO)")
-    if not reverso: return
+    # 2. Seleccionar todos los reversos a la vez
+    reversos = filedialog.askopenfilenames(title="2. Selecciona TODOS los REVERSOS (En el mismo orden que los frentes)")
+    if not reversos: return
+    
+    if len(frentes) != len(reversos):
+        messagebox.showerror("Error", f"La cantidad de Frentes ({len(frentes)}) no coincide con la cantidad de Reversos ({len(reversos)}). Deben ser iguales.")
+        ventana.destroy()
+        return
 
     try:
         carpeta = Path.home() / "OneDrive" / "Desktop" / "salida_cedulas"
         carpeta.mkdir(parents=True, exist_ok=True)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        frente_salida = carpeta / f"frente_{timestamp}.png"
-        reverso_salida = carpeta / f"reverso_{timestamp}.png"
-        pdf_salida = carpeta / f"cedula_{timestamp}.pdf"
-
-        procesar_foto(frente, frente_salida, "FRENTE", a_color=color)
-        procesar_foto(reverso, reverso_salida, "REVERSO", a_color=color)
+        pdf_salida = carpeta / f"cedulas_lote_{timestamp}.pdf"
         
-        crear_pdf(frente_salida, reverso_salida, pdf_salida, es_grande)
+        pares_procesados = []
+        
+        for i, (f_ruta, r_ruta) in enumerate(zip(frentes, reversos)):
+            f_salida = carpeta / f"frente_{timestamp}_{i}.png"
+            r_salida = carpeta / f"reverso_{timestamp}_{i}.png"
+            
+            procesar_foto(f_ruta, f_salida, f"FRENTE #{i+1}", a_color=color)
+            procesar_foto(r_ruta, r_salida, f"REVERSO #{i+1}", a_color=color)
+            
+            pares_procesados.append((f_salida, r_salida))
+        
+        crear_pdf_lote(pares_procesados, pdf_salida, es_grande)
 
         sub = Toplevel(ventana)
-        sub.title("PDF Generado")
-        Label(sub, text="¡PDF listo! El orden ha sido respetado.", pady=20, padx=20).pack()
+        sub.title("PDF por Lotes Generado")
+        Label(sub, text=f"¡Se procesaron {len(pares_procesados)} cédulas con éxito en un solo PDF!", pady=20, padx=20).pack()
         Button(sub, text="Imprimir (Predeterminada)", command=lambda: [os.startfile(str(pdf_salida), "print"), ventana.destroy()]).pack(pady=5)
         Button(sub, text="Elegir Impresora (Manual)", command=lambda: [os.startfile(str(pdf_salida)), ventana.destroy()]).pack(pady=5)
         sub.mainloop()
     except Exception as e:
-        messagebox.showerror("Error", f"Error al generar:\n{e}")
+        messagebox.showerror("Error", f"Error al procesar el lote:\n{e}")
     ventana.destroy()
 
 if __name__ == "__main__":
