@@ -9,10 +9,10 @@ from rembg import remove
 from datetime import datetime
 
 # ============================================================
-# CONSTANTES
+# CONSTANTES Y CONFIGURACIÓN
 # ============================================================
 OUTPUT_WIDTH = 2400 
-PROPORCION = 54.0 / 85.6 # Proporción de la cédula
+PROPORCION = 54.0 / 85.6 
 
 def mm_to_points(mm):
     return mm * 72 / 25.4
@@ -71,29 +71,23 @@ def procesar_foto(ruta, salida, tipo_cara, a_color=True):
     cv2.imwrite(str(salida), resultado, [cv2.IMWRITE_PNG_COMPRESSION, 1])
 
 # ============================================================
-# CREAR PDF (VERTICAL APILADO CON OPCIÓN DE TAMAÑO)
+# CREAR PDF
 # ============================================================
 def crear_pdf(frente, reverso, archivo_pdf, usar_tamanio_grande):
     ancho_pagina, alto_pagina = letter 
-    margin = 36 # 0.5 pulgadas de margen
+    margin = 36 
     
     if usar_tamanio_grande:
-        # Ocupa todo el ancho disponible
         img_width = ancho_pagina - (margin * 2)
     else:
-        # Tamaño original: 87mm -> ~246 pts
         img_width = mm_to_points(87.0)
     
     img_height = img_width * PROPORCION
-    
     pdf = canvas.Canvas(str(archivo_pdf), pagesize=letter)
-    
-    # Calcular centro horizontal
     x_pos = (ancho_pagina - img_width) / 2
     
-    # Posiciones verticales (apiladas)
     y_frente = alto_pagina - margin - img_height
-    y_reverso = y_frente - 30 - img_height # 30 pts de separación
+    y_reverso = y_frente - 30 - img_height
     
     pdf.drawImage(str(frente), x_pos, y_frente, width=img_width, height=img_height)
     pdf.drawImage(str(reverso), x_pos, y_reverso, width=img_width, height=img_height)
@@ -107,15 +101,13 @@ def ejecutar():
     ventana.withdraw()
     
     color = messagebox.askyesno("Color", "¿Imprimir a COLOR?")
+    es_grande = messagebox.askyesno("Tamaño", "¿Deseas imprimir en TAMAÑO GRANDE (ancho de hoja) o ORIGINAL (8.7 cm)?")
     
-    # Selección de tamaño
-    es_grande = messagebox.askyesno("Tamaño", 
-        "¿Deseas imprimir en TAMAÑO GRANDE (Ancho completo de hoja) o TAMAÑO ORIGINAL (8.7 cm)?\n\n"
-        "SÍ = Grande | NO = Original")
-    
-    frente = filedialog.askopenfilename(title="Selecciona FOTO FRENTE")
+    # Pedir archivos uno por uno para asegurar el orden
+    frente = filedialog.askopenfilename(title="1. SELECCIONA LA PARTE DE ADELANTE (FRENTE)")
     if not frente: return
-    reverso = filedialog.askopenfilename(title="Selecciona FOTO REVERSO")
+    
+    reverso = filedialog.askopenfilename(title="2. SELECCIONA LA PARTE DE ATRÁS (REVERSO)")
     if not reverso: return
 
     try:
@@ -134,7 +126,7 @@ def ejecutar():
 
         sub = Toplevel(ventana)
         sub.title("PDF Generado")
-        Label(sub, text="¡PDF listo! Se han apilado las cédulas.", pady=20, padx=20).pack()
+        Label(sub, text="¡PDF listo! El orden ha sido respetado.", pady=20, padx=20).pack()
         Button(sub, text="Imprimir (Predeterminada)", command=lambda: [os.startfile(str(pdf_salida), "print"), ventana.destroy()]).pack(pady=5)
         Button(sub, text="Elegir Impresora (Manual)", command=lambda: [os.startfile(str(pdf_salida)), ventana.destroy()]).pack(pady=5)
         sub.mainloop()
